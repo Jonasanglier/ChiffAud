@@ -7,11 +7,13 @@ Matplotlib et NumPy doivent être installés.
 import argparse
 import queue
 import sys
-
-from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
-import sounddevice as sd
+import sounddevice as sd #type: ignore
+
+from scipy.signal import butter, lfilter
+from matplotlib.animation import FuncAnimation
+
 
 def int_or_str(text):
     """Convertit une chaîne en entier sinon renvoie la chaîne telle quelle."""
@@ -50,7 +52,7 @@ parser.add_argument(
 parser.add_argument(
     '-b', '--blocksize', type=int, help='block size (in samples)')
 parser.add_argument(
-    '-r', '--samplerate', type=float, default=48000.0, help='sampling rate of audio device')
+    '-r', '--samplerate', type=float, default=16000.0, help='sampling rate of audio device')
 parser.add_argument(
     '-n', '--downsample', type=int, default=1, metavar='N',
     help='display every Nth sample (default: %(default)s)')
@@ -111,8 +113,18 @@ def nrz_decode(data):
     """Décodage NRZ simple."""
     return np.where(data > 0, 1, 0)
 
+def butter_lowpass(cutoff, fs, order=5):
+    nyq = 0.5 * fs
+    normal_cutoff = cutoff / nyq
+    b, a = butter(order, normal_cutoff, btype='low', analog=False)
+    return b, a
+
+def lowpass_filter(data, cutoff, fs, order=5):
+    b, a = butter_lowpass(cutoff, fs, order=order)
+    y = lfilter(b, a, data)
+    return y
+
 def update_plot(frame):
-    """Cette fonction est appelée par matplotlib pour chaque mise à jour du tracé."""
     global plotdata, plotdata_mod, plotdata_nrz, plotdata_nrz_decoded, plotdata_demod
     while True:
         try:
@@ -143,6 +155,11 @@ def update_plot(frame):
         # Démodulation CVSD
         demod_data = cvsd_demodulate(nrz_decoded_data.flatten())
         demod_data = demod_data.reshape(-1, len(args.channels))
+
+        # Application du filtre passe-bas
+        cutoff_frequency = 7999.0  # fréquence de coupure en Hz, à ajuster selon tes besoins
+        demod_data = lowpass_filter(demod_data, cutoff_frequency, args.samplerate)
+
         plotdata_demod = np.roll(plotdata_demod, -shift, axis=0)
         plotdata_demod[-shift:, :] = demod_data
 
@@ -153,6 +170,7 @@ def update_plot(frame):
         line_nrz_dec.set_ydata(plotdata_nrz_decoded[:, column])
         line_demod.set_ydata(plotdata_demod[:, column])
     return lines + lines_mod + lines_nrz + lines_nrz_decoded + lines_demod
+
 
 try:
     if args.samplerate is None:

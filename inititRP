@@ -13,12 +13,21 @@ Sur Raspberry il est impossible d'installer sounddevice donc on va être obligé
 - pip3 install matplotlib
 - python /home/jo/Desktop/ProjetChiff/ChiffAud3.py	//lancement du code, attention c'est bin "python" et non "/bin/python" car sinon on quitte la VM pour retourner en local
 
+ajouter scipy aussi pour le le filtre passe-bas :
+- pip3 install scipy
 Vidéographie : Build a speech Recognition System on a Raspberry Pi.
 
 Pour lancer le programme il faut donc tapper :
 - . venv/bin/activate 
 - python /home/jo/Desktop/ProjetChiff/ChiffAud3.py
 
+pour quitter l'environnemnt virtuel :
+
+- Deactivate
+
 la meilleure chose à faire est de modifier le code via VSC et de le lancer directement depuis son invite de commande
 
 
+Github : 
+
+Pour push des modifications il faut rtourner dans le dossier en local.
