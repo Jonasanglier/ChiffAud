@@ -1,0 +1,24 @@
+- Attention à bien être connecté à internet pour telecharger les librairies 
+- Ajouter VSC et mu s'ils ne se trouvent pas dans Framboise->programmation : Aller dans Framboise-> Préférences-> recommended Software, les trouver et les installer
+- Télécharger sounddevice et Matplotlib :
+Sur Raspberry il est impossible d'installer sounddevice donc on va être obligé de lancer le code sur une VM sur laquelle on aura installer les librairies. Pour faire cela :
+- sudo apt update
+- sudo apt upgrade 
+- sudo apt install python3 
+- sudo apt install libportaudio0 libportaudio2 libportaudiocpp0 portaudio19-dev flac
+- python3 -m venv venv
+- . venv/bin/activate	//création et lancement de la VM
+- pip install pyaudio requests websockets
+- pip3 install sounddevice
+- pip3 install matplotlib
+- python /home/jo/Desktop/ProjetChiff/ChiffAud3.py	//lancement du code, attention c'est bin "python" et non "/bin/python" car sinon on quitte la VM pour retourner en local
+
+Vidéographie : Build a speech Recognition System on a Raspberry Pi.
+
+Pour lancer le programme il faut donc tapper :
+- . venv/bin/activate 
+- python /home/jo/Desktop/ProjetChiff/ChiffAud3.py
+
+la meilleure chose à faire est de modifier le code via VSC et de le lancer directement depuis son invite de commande
+
+
