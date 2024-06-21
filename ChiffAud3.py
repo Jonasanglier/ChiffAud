@@ -1,35 +1,32 @@
+#!/usr/bin/env python3
 """
-Nous sommes à l'étapes des interuptions pour que lorsque le raspberry arrète d'envoyer il puisse écouter pour recevoir s'il y a des signaux en reception
 SIMULATEUR DE CHIFFREUR FAIT EN JUILLET 2024 PAR JONASZ SANGLIER A THALES GENNEVILLIERS
 
-Matplotlib et NumPy doivent être installés sur l'OS
+Matplotlib et NumPy doivent être installés.
 """
 import argparse
-from ast import arg
 import queue
 import sys
 
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
-import sounddevice as sd #type: ignore
+import sounddevice as sd
 
 def int_or_str(text):
-    """Convertion d'une chaine en entier sinon renvoie la chaine tel qu'elle est."""
+    """Convertit une chaîne en entier sinon renvoie la chaîne telle quelle."""
     try:
         return int(text)
     except ValueError:
         return text
 
-
-# Création du parser d'argument pour afficher les périphériques audio disponibles
+# Création du parser d'arguments pour afficher les périphériques audio disponibles
 parser = argparse.ArgumentParser(add_help=False)
 parser.add_argument(
     '-l', '--list-devices', action='store_true',
-    help='affiche la liste des périphériques audios et quitte')
+    help='affiche la liste des périphériques audio et quitte')
 args, remaining = parser.parse_known_args()
 if args.list_devices:
-    # Si l'utilisateur veut lister les périphériques audio, les montre et quitte
     print(sd.query_devices())
     parser.exit(0)
 
@@ -53,7 +50,7 @@ parser.add_argument(
 parser.add_argument(
     '-b', '--blocksize', type=int, help='block size (in samples)')
 parser.add_argument(
-    '-r', '--samplerate',type=float, default=16000.0, help='sampling rate of audio device') # Choix de la fréquence d'échantillonage, si on enlève le défault on utilise le samplerate du PC ou du Raspberry 
+    '-r', '--samplerate', type=float, default=48000.0, help='sampling rate of audio device')
 parser.add_argument(
     '-n', '--downsample', type=int, default=1, metavar='N',
     help='display every Nth sample (default: %(default)s)')
@@ -61,17 +58,15 @@ args = parser.parse_args(remaining)
 if any(c < 1 for c in args.channels):
     parser.error('argument CHANNEL: must be >= 1')
 mapping = [c - 1 for c in args.channels]  # Les numéros de canal commencent à 1
-q = queue.Queue() # création de file d'attente
-
+q = queue.Queue()  # création de file d'attente
 
 def audio_callback(indata, frames, time, status):
-    """Cette fonction est appelée (à partir d'un thread séparé dans sounddevice) pour chaque bloc audio."""
+    """Cette fonction est appelée (à partir d'un thread séparé) pour chaque bloc audio."""
     if status:
         print(status, file=sys.stderr)
-    # L'indexation avec mapping crée une copie nécessaire :
-    q.put(indata[:, mapping])
+    q.put(indata[::args.downsample, mapping])
 
-def cvsd_modulate(signal, delta_init=0.5, mu=1.5):  # modulation du signal
+def cvsd_modulate(signal, delta_init=0.2, mu=1.5):
     encoded = []
     delta = delta_init
     estimate = 0
@@ -83,13 +78,13 @@ def cvsd_modulate(signal, delta_init=0.5, mu=1.5):  # modulation du signal
             encoded.append(0)
             estimate -= delta
 
-        if len(encoded) > 1 and encoded[-1] == encoded[-2]: # CVSD compare habituellement 3 bits mais dans notre cas 2 suffisent
+        if len(encoded) > 1 and encoded[-1] == encoded[-2]:
             delta *= mu
         else:
             delta /= mu
     return encoded
 
-def cvsd_demodulate(encoded, delta_init=0.5, mu=1.5):  # démodulation du signal
+def cvsd_demodulate(encoded, delta_init=0.2, mu=1.5):
     delta = delta_init
     estimate = 0
     decoded = []
@@ -101,13 +96,13 @@ def cvsd_demodulate(encoded, delta_init=0.5, mu=1.5):  # démodulation du signal
 
         decoded.append(estimate)
 
-        # Vérifier les trois derniers bits pour ajuster delta
-        if i >= 2 and encoded[i] == encoded[i-1]:
+        if i >= 1 and encoded[i] == encoded[i-1]:
             delta *= mu
         else:
             delta /= mu
 
     return np.array(decoded)
+
 def nrz_encode(data):
     """Encodage NRZ simple."""
     return np.where(data > 0.5, 1, -1)
@@ -117,23 +112,19 @@ def nrz_decode(data):
     return np.where(data > 0, 1, 0)
 
 def update_plot(frame):
-    """Cette fonction est appelée par matplotlib pour chaque mise à jour du tracé.
-
-    Typiquement, les callbacks audio se produisent plus fréquemment que les mises à jour du tracé,
-    donc la queue tend à contenir plusieurs blocs de données audio.
-    """
+    """Cette fonction est appelée par matplotlib pour chaque mise à jour du tracé."""
     global plotdata, plotdata_mod, plotdata_nrz, plotdata_nrz_decoded, plotdata_demod
     while True:
-        try:        
+        try:
             data = q.get_nowait()
         except queue.Empty:
             break
-        '''récupère le signal dans la queue, sort du while si on ne le détecte plus'''
+        
         shift = len(data)
         plotdata = np.roll(plotdata, -shift, axis=0)
         plotdata[-shift:, :] = data
 
-        # Modulation CSVD
+        # Modulation CVSD
         mod_data = cvsd_modulate(data.flatten())
         mod_data = np.array(mod_data).reshape(-1, len(args.channels))
         plotdata_mod = np.roll(plotdata_mod, -shift, axis=0)
@@ -149,7 +140,7 @@ def update_plot(frame):
         plotdata_nrz_decoded = np.roll(plotdata_nrz_decoded, -shift, axis=0)
         plotdata_nrz_decoded[-shift:, :] = nrz_decoded_data
 
-        # Démodulation CSVD
+        # Démodulation CVSD
         demod_data = cvsd_demodulate(nrz_decoded_data.flatten())
         demod_data = demod_data.reshape(-1, len(args.channels))
         plotdata_demod = np.roll(plotdata_demod, -shift, axis=0)
@@ -163,15 +154,14 @@ def update_plot(frame):
         line_demod.set_ydata(plotdata_demod[:, column])
     return lines + lines_mod + lines_nrz + lines_nrz_decoded + lines_demod
 
-
 try:
     if args.samplerate is None:
         device_info = sd.query_devices(args.device, 'input')
         args.samplerate = device_info['default_samplerate']
 
-    length = int(args.window * args.samplerate / (arg.samplerate))
+    length = int(args.window * args.samplerate / (1000 * args.downsample))
     plotdata = np.zeros((length, len(args.channels)))
-    plotdata_mod = np.zeros((length, len(args.channels)))   
+    plotdata_mod = np.zeros((length, len(args.channels)))
     plotdata_nrz = np.zeros((length, len(args.channels)))
     plotdata_nrz_decoded = np.zeros((length, len(args.channels)))
     plotdata_demod = np.zeros((length, len(args.channels)))
@@ -186,7 +176,7 @@ try:
     axs[0].set_title('Signal Audio Original')
     axs[0].set_ylim(ymin=-1.2, ymax=1.2)
 
-    axs[1].set_title('Signal Modulé CSVD')
+    axs[1].set_title('Signal Modulé CVSD')
     axs[1].set_ylim(ymin=-0.2, ymax=1.2)
 
     axs[2].set_title('Signal Codé en NRZ')
@@ -195,7 +185,7 @@ try:
     axs[3].set_title('Signal Décodé en NRZ')
     axs[3].set_ylim(ymin=-0.2, ymax=1.2)
 
-    axs[4].set_title('Signal Démodulé CSVD')
+    axs[4].set_title('Signal Démodulé CVSD')
     axs[4].set_ylim(ymin=-1.2, ymax=1.2)
 
     fig.tight_layout(pad=0.5)
@@ -207,6 +197,4 @@ try:
     with stream:
         plt.show()
 except Exception as e:
-
-    
     parser.exit(type(e).__name__ + ': ' + str(e))

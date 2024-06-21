@@ -52,7 +52,7 @@ parser.add_argument(
 parser.add_argument(
     '-b', '--blocksize', type=int, help='block size (in samples)')
 parser.add_argument(
-    '-r', '--samplerate',type=float, default=16000.0, help='sampling rate of audio device') # Choix de la fréquence d'échantillonage, si on enlève le défault on utilise le samplerate du PC ou du Raspberry 
+    '-r', '--samplerate',type=float, default=16000.0, help='sampling rate of audio device') # Choix de la fréquence d'échantillonage, si on enlève le défault on utilise le samplerate du PC ou du Raspberry
 parser.add_argument(
     '-n', '--downsample', type=int, default=10, metavar='N',
     help='display every Nth sample (default: %(default)s)')
@@ -123,7 +123,7 @@ def update_plot(frame):
     """
     global plotdata, plotdata_mod, plotdata_nrz, plotdata_nrz_decoded, plotdata_demod
     while True:
-        try:        
+        try:
             data = q.get_nowait()
         except queue.Empty:
             break
