@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """
-SIMULATEUR DE CHIFFREUR FAIT EN JUILLET 2024 PAR JONASZ SANGLIER A THALES GENNEVILLIERS
+SIMULATEUR DE CHIFFREUR AUDIO FAIT EN JUILLET 2024 PAR JONASZ SANGLIER A THALES GENNEVILLIERS
 
 Matplotlib et NumPy doivent être installés.
 """
 import argparse
 import queue
 import sys
-import matplotlib.pyplot as plt
-import numpy as np
+import numpy as np  #type: ignore
 import sounddevice as sd #type: ignore
+import time
+import matplotlib.pyplot as plt #type: ignore
 
-from scipy.signal import butter, lfilter
-from matplotlib.animation import FuncAnimation
-
+from scipy.signal import butter, lfilter    #type: ignore
+from matplotlib.animation import FuncAnimation  #type: ignore
+import threading
 
 def int_or_str(text):
     """Convertit une chaîne en entier sinon renvoie la chaîne telle quelle."""
@@ -53,20 +54,52 @@ parser.add_argument(
     '-b', '--blocksize', type=int, help='block size (in samples)')
 parser.add_argument(
     '-r', '--samplerate', type=float, default=16000.0, help='sampling rate of audio device')
-parser.add_argument(
-    '-n', '--downsample', type=int, default=1, metavar='N',
-    help='display every Nth sample (default: %(default)s)')
 args = parser.parse_args(remaining)
 if any(c < 1 for c in args.channels):
     parser.error('argument CHANNEL: must be >= 1')
 mapping = [c - 1 for c in args.channels]  # Les numéros de canal commencent à 1
 q = queue.Queue()  # création de file d'attente
 
+def signal_power(signal):
+    """Calcule la puissance du signal."""
+    return np.sqrt(np.mean(np.square(signal)))
+
+power_threshold = 0.01  # Seuil pour détecter le début de la parole
+silence_threshold = 0.005  # Seuil pour détecter le silence
+silence_duration = 1.0  # Durée de silence en secondes avant de considérer comme silence
+
+current_state = 'silence'
+last_signal_time = None
+lock = threading.Lock()
+
+def trigger_event(state):
+    """Fonction déclenchée en fonction de l'état (parole ou silence)."""
+    global current_state
+    with lock:
+        if state == 'speech' and current_state == 'silence':
+            current_state = 'speech'
+            print("Début de la parole détecté ! Reprise des opérations.")
+        elif state == 'silence' and current_state == 'speech':
+            current_state = 'silence'
+            print("Silence détecté ! Pause des opérations.")
+
 def audio_callback(indata, frames, time, status):
     """Cette fonction est appelée (à partir d'un thread séparé) pour chaque bloc audio."""
+    global last_signal_time
     if status:
         print(status, file=sys.stderr)
-    q.put(indata[::args.downsample, mapping])
+    q.put(indata[::1, mapping])
+
+    # Calculer la puissance du signal
+    power = signal_power(indata)
+
+    # Vérifier si la puissance dépasse le seuil pour la parole
+    if power > power_threshold:
+        last_signal_time = time.currentTime
+        trigger_event('speech')
+    # Vérifier si le signal est inférieur au seuil de silence depuis un certain temps
+    elif last_signal_time and (time.currentTime - last_signal_time > silence_duration):
+        trigger_event('silence')
 
 def cvsd_modulate(signal, delta_init=0.2, mu=1.5):
     encoded = []
@@ -113,7 +146,7 @@ def nrz_decode(data):
     """Décodage NRZ simple."""
     return np.where(data > 0, 1, 0)
 
-def butter_lowpass(cutoff, fs, order=5):
+def butter_lowpass(cutoff, fs, order=10):
     nyq = 0.5 * fs
     normal_cutoff = cutoff / nyq
     b, a = butter(order, normal_cutoff, btype='low', analog=False)
@@ -126,6 +159,9 @@ def lowpass_filter(data, cutoff, fs, order=5):
 
 def update_plot(frame):
     global plotdata, plotdata_mod, plotdata_nrz, plotdata_nrz_decoded, plotdata_demod
+    if current_state == 'silence':
+        return lines + lines_mod + lines_nrz + lines_nrz_decoded + lines_demod
+    
     while True:
         try:
             data = q.get_nowait()
@@ -172,12 +208,14 @@ def update_plot(frame):
     return lines + lines_mod + lines_nrz + lines_nrz_decoded + lines_demod
 
 
+
 try:
+    # Initialisation de la capture et de l'affichage
     if args.samplerate is None:
         device_info = sd.query_devices(args.device, 'input')
         args.samplerate = device_info['default_samplerate']
 
-    length = int(args.window * args.samplerate / (1000 * args.downsample))
+    length = int(args.window * args.samplerate / 1000)
     plotdata = np.zeros((length, len(args.channels)))
     plotdata_mod = np.zeros((length, len(args.channels)))
     plotdata_nrz = np.zeros((length, len(args.channels)))
@@ -214,5 +252,5 @@ try:
     ani = FuncAnimation(fig, update_plot, interval=args.interval, blit=True)
     with stream:
         plt.show()
-except Exception as e:
-    parser.exit(type(e).__name__ + ': ' + str(e))
+finally:
+    print("nana")

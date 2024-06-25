@@ -1,5 +1,6 @@
 - Attention à bien être connecté à internet pour telecharger les librairies 
-- Ajouter VSC et mu s'ils ne se trouvent pas dans Framboise->programmation : Aller dans Framboise-> Préférences-> recommended Software, les trouver et les installer
+- Ajouter VSC et mu s'ils ne se trouvent pas dans Framboise->programmation : Aller dans Framboise-> Préférences-> recommended Software, les trouver et les installer.
+- Ajouter le package python à VSC
 - Télécharger sounddevice et Matplotlib :
 Sur Raspberry il est impossible d'installer sounddevice donc on va être obligé de lancer le code sur une VM sur laquelle on aura installer les librairies. Pour faire cela :
 - sudo apt update
@@ -9,6 +10,7 @@ Sur Raspberry il est impossible d'installer sounddevice donc on va être obligé
 - python3 -m venv venv
 - . venv/bin/activate	//création et lancement de la VM
 - pip install pyaudio requests websockets
+- sudo apt-get install libportaudio2 // pour utiliser sounddevice
 - pip3 install sounddevice
 - pip3 install matplotlib
 - python /home/jo/Desktop/ProjetChiff/ChiffAud3.py	//lancement du code, attention c'est bin "python" et non "/bin/python" car sinon on quitte la VM pour retourner en local
