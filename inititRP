@@ -2,17 +2,21 @@
 - Ajouter VSC et mu s'ils ne se trouvent pas dans Framboise->programmation : Aller dans Framboise-> Préférences-> recommended Software, les trouver et les installer.
 - Ajouter le package python à VSC
 - Télécharger sounddevice et Matplotlib :
-Sur Raspberry il est impossible d'installer sounddevice donc on va être obligé de lancer le code sur une VM sur laquelle on aura installer les librairies. Pour faire cela :
+Sur Raspberry il est impossible d'installer sounddevice donc on va être obligé de lancer le code sur une VM sur laquelle on aura installer les librairies. Pour faire cela :Toutes les librairies et les manipulation à faire dans le terminal doivent être fait depuis l'environnement virtuel.
+
+- python3 -m venv venv
+- . venv/bin/activate	//création et lancement de la VM
 - sudo apt update
 - sudo apt upgrade 
 - sudo apt install python3 
-- sudo apt install libportaudio0 libportaudio2 libportaudiocpp0 portaudio19-dev flac
-- python3 -m venv venv
-- . venv/bin/activate	//création et lancement de la VM
+- sudo apt install libportaudio2 libportaudiocpp0 portaudio19-dev flac
+- sudo apt install python3-dev portaudio19-dev
 - pip install pyaudio requests websockets
 - sudo apt-get install libportaudio2 // pour utiliser sounddevice
 - pip3 install sounddevice
 - pip3 install matplotlib
+- pip3 install libgpiod2 python3-libgpiod
+- pip3 install gpiod					//pour utiliser le GPIO du raspberry
 - python /home/jo/Desktop/ProjetChiff/ChiffAud3.py	//lancement du code, attention c'est bin "python" et non "/bin/python" car sinon on quitte la VM pour retourner en local
 
 ajouter scipy aussi pour le le filtre passe-bas :
@@ -33,3 +37,25 @@ la meilleure chose à faire est de modifier le code via VSC et de le lancer dire
 Github : 
 
 Pour push des modifications il faut rtourner dans le dossier en local.
+
+Ghithub:
+
+si on des problèmes de droit :
+
+(.venv) jo@raspberrypi:~/Desktop/ChiffAud $ git config user.name "jonasanglier"
+(.venv) jo@raspberrypi:~/Desktop/ChiffAud $ git config user.email "jonasanglier@gmail.com"
+
+Attention à se placer dans le repertoir repertoir qui vontient le fichier venv quand on essaye d'y acceder avec .venv/bin/activate
+
+///////////////////////////////Pour le codec
+
+Désactiver l'entrée audio par défalt: aller dans le fichier /boot/config.txt et mettre dtparam=audio=on en commentaire (#) à l'aide de sudo nano 
+
+
+sudo apt install alsa-utils
+Lister les périphériques dispo :
+- arecord -l
+ajuster les niveaux de volume :
+- alsamixer
+
+
