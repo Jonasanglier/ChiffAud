@@ -31,6 +31,13 @@ la meilleure chose à faire est de modifier le code via VSC et de le lancer dire
 
 
 Github : 
+	Authentification :
+-sudo apt install gh 
+-gh auth login
+
+Ensuite on pezut utiliser github comme avant 
+
+
 
 Pour push des modifications il faut rtourner dans le dossier en local.
 
