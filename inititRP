@@ -35,7 +35,11 @@ la meilleure chose à faire est de modifier le code via VSC et de le lancer dire
 
 
 Github : 
+	Authentification :
+-sudo apt install gh 
+-gh auth login
 
+<<<<<<< HEAD
 Pour push des modifications il faut rtourner dans le dossier en local.
 
 Ghithub:
@@ -61,3 +65,15 @@ ajuster les niveaux de volume :
 - alsamixer
 
 
+=======
+Ensuite on pezut utiliser github comme avant 
+
+
+
+Pour push des modifications il faut rtourner dans le dossier en local.
+
+Brancher la carte IQAudio :
+faire ce qui est dit ici https://www.raspberrypi.com/documentation/accessories/audio.html
+Sur Github utiliser le fichier .State : Codec_Zero_AUXIN_record_and_HP_playback.state.
+Tester l'audio et la capture.
+>>>>>>> 12422e55088c070e69121e4a6b0f4c6de38b99f4
