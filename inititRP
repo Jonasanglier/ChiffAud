@@ -39,7 +39,9 @@ Github :
 Pour push des modifications il faut rtourner dans le dossier en local.
 
 Ghithub:
-
+    Authentification :
+sudo apt install gh
+gh auth login 
 si on des problèmes de droit :
 
 (.venv) jo@raspberrypi:~/Desktop/ChiffAud $ git config user.name "jonasanglier"
