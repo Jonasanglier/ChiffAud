@@ -77,3 +77,7 @@ faire ce qui est dit ici https://www.raspberrypi.com/documentation/accessories/a
 Sur Github utiliser le fichier .State : Codec_Zero_AUXIN_record_and_HP_playback.state.
 Tester l'audio et la capture.
 >>>>>>> 12422e55088c070e69121e4a6b0f4c6de38b99f4
+
+############mettre les cartes audios en carte 0 pour qu'elle ne change pas de numéro de carte et qu'ainsi elles ne soiennt plus les cartes par défauts:
+
+
