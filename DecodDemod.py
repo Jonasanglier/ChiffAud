@@ -2,24 +2,6 @@ import pyaudio
 import numpy as np
 import matplotlib.pyplot as plt
 
-def cvsd_modulate(signal, delta_init=0.4, mu=1.5):
-    encoded = []
-    delta = delta_init
-    estimate = 0
-    for sample in signal:
-        if sample > estimate:
-            encoded.append(1)
-            estimate += delta
-        else:
-            encoded.append(0)
-            estimate -= delta
-
-        if len(encoded) > 1 and encoded[-1] == encoded[-2]:
-            delta *= mu
-        else:
-            delta /= mu
-    return encoded
-
 def cvsd_demodulate(encoded, delta_init=0.2, mu=1.5):
     delta = delta_init
     estimate = 0
@@ -39,15 +21,12 @@ def cvsd_demodulate(encoded, delta_init=0.2, mu=1.5):
 
     return np.array(decoded)
 
-def nrz_encode(data):
-    """Encodage NRZ simple."""
-    return np.where(data > 0.5, 1, -1)
-
 def nrz_decode(data):
     """Décodage NRZ simple."""
     return np.where(data > 0, 1, 0)
 
-def plot_audio_stream(device_index=0, rate=48000, channels=1):
+
+def plot_audio_stream(device_index=0, rate=44100, channels=1):
     p = pyaudio.PyAudio()
     
     # Configuration du flux audio
@@ -88,25 +67,17 @@ def plot_audio_stream(device_index=0, rate=48000, channels=1):
             data = stream.read(1024, exception_on_overflow=False)
             
             # Convertir les données audio en un tableau numpy
-            audio_data = np.frombuffer(data, dtype=np.int16)
-            
-            # Modulation CVSD
-            mod_data = cvsd_modulate(audio_data)
-            mod_data = np.array(mod_data)
-            
-            # Codage NRZ
-            nrz_data = nrz_encode(mod_data)
+            audio_data = np.frombuffer(data, dtype=np.int16) 
+
             
             # Décodage NRZ
-            nrz_decoded_data = nrz_decode(nrz_data)
+            nrz_decoded_data = nrz_decode(audio_data)
             
             # Démodulation CVSD
             demod_data = cvsd_demodulate(nrz_decoded_data)
             
             # Mettre à jour les plots
-            lines[0].set_ydata(audio_data)
-            lines[1].set_ydata(mod_data)
-            lines[2].set_ydata(nrz_data)
+
             lines[3].set_ydata(nrz_decoded_data)
             lines[4].set_ydata(demod_data)
             
