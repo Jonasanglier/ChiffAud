@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import serial
 import time
+import threading
+from queue import Queue
 
 def cvsd_modulate(signal, delta_init=0.2, mu=1.5):
     encoded = []
@@ -26,26 +28,63 @@ def nrz_encode(data):
     """Encodage NRZ simple."""
     return np.where(data > 0.5, 1, -1)
 
-def plot_audio_stream(device_index=0, rate=44100, channels=1):
+def audio_input_thread(input_queue, device_index=0, rate=44100, channels=1):
     p = pyaudio.PyAudio()
-    
-    # Configuration du flux audio pour l'entrée
     input_stream = p.open(format=pyaudio.paInt16,
                           channels=channels,
                           rate=rate,
                           input=True,
                           input_device_index=device_index,
                           frames_per_buffer=1024)
-    
-    # Configuration du flux audio pour la sortie
+    try:
+        while True:
+            data = input_stream.read(1024, exception_on_overflow=False)
+            audio_data = np.frombuffer(data, dtype=np.int16)
+            input_queue.put(audio_data)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        input_stream.stop_stream()
+        input_stream.close()
+        p.terminate()
+
+def audio_output_thread(output_queue, device_index=0, rate=44100, channels=1):
+    p = pyaudio.PyAudio()
     output_stream = p.open(format=pyaudio.paInt16,
                            channels=channels,
                            rate=rate,
                            output=True,
                            output_device_index=device_index)
-    
-    # Configuration du port série
+    try:
+        while True:
+            nrz_data_audio = output_queue.get()
+            output_stream.write(nrz_data_audio.tobytes())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        output_stream.stop_stream()
+        output_stream.close()
+        p.terminate()
+
+def serial_output_thread(serial_queue):
     ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
+    try:
+        while True:
+            nrz_data_audio = serial_queue.get()
+            ser.write(nrz_data_audio.tobytes())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        ser.close()
+
+def plot_audio_stream(device_index=0, rate=44100, channels=1):
+    input_queue = Queue()
+    output_queue = Queue()
+    serial_queue = Queue()
+
+    threading.Thread(target=audio_input_thread, args=(input_queue, device_index, rate, channels)).start()
+    threading.Thread(target=audio_output_thread, args=(output_queue, device_index, rate, channels)).start()
+    threading.Thread(target=serial_output_thread, args=(serial_queue,)).start()
 
     print("Affichage et traitement du signal en cours...")
     
@@ -70,10 +109,7 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1):
 
     try:
         while True:
-            data = input_stream.read(1024, exception_on_overflow=False)
-            
-            # Convertir les données audio en un tableau numpy
-            audio_data = np.frombuffer(data, dtype=np.int16)
+            audio_data = input_queue.get()
             
             # Modulation CVSD
             mod_data = cvsd_modulate(audio_data)
@@ -85,13 +121,9 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1):
             # Convertir les données NRZ en format compatible pour la sortie audio
             nrz_data_audio = np.int16(nrz_data * 32767)  # Scaler les données pour correspondre au format audio
             
-            # Envoyer les données codées NRZ à la sortie audio
-            output_stream.write(nrz_data_audio.tobytes())
-            
-            # Envoyer les données codées NRZ au port série
-            for value in nrz_data:
-                ser.write(f'{value}\n'.encode())
-                time.sleep(1 / rate)
+            # Mettre les données dans les files d'attente pour la sortie audio et série
+            output_queue.put(nrz_data_audio)
+            serial_queue.put(nrz_data_audio)
             
             # Mettre à jour les plots
             lines[0].set_ydata(audio_data)
@@ -105,13 +137,8 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1):
         print("Affichage et traitement terminés.")
     
     finally:
-        # Arrêter les flux et fermer
-        input_stream.stop_stream()
-        input_stream.close()
-        output_stream.stop_stream()
-        output_stream.close()
-        ser.close()
-        p.terminate()
+        plt.ioff()
+        plt.show()
 
 # Utilisation du script
 plot_audio_stream(device_index=0, rate=44100, channels=1)
