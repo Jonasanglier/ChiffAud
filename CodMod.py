@@ -2,9 +2,11 @@ import pyaudio
 import numpy as np
 import matplotlib.pyplot as plt
 import serial
-import time
 import threading
-from queue import Queue
+
+# Variables partagées et verrous
+audio_data_shared = None
+audio_data_lock = threading.Lock()
 
 def cvsd_modulate(signal, delta_init=0.2, mu=1.5):
     encoded = []
@@ -28,19 +30,21 @@ def nrz_encode(data):
     """Encodage NRZ simple."""
     return np.where(data > 0.5, 1, -1)
 
-def audio_input_thread(input_queue, device_index=0, rate=44100, channels=1):
+def audio_input_thread(device_index=0, rate=44100, channels=1, chunk_size=2048):
+    global audio_data_shared
     p = pyaudio.PyAudio()
     input_stream = p.open(format=pyaudio.paInt16,
                           channels=channels,
                           rate=rate,
                           input=True,
                           input_device_index=device_index,
-                          frames_per_buffer=1024)
+                          frames_per_buffer=chunk_size)
     try:
         while True:
-            data = input_stream.read(1024, exception_on_overflow=False)
+            data = input_stream.read(chunk_size, exception_on_overflow=False)
             audio_data = np.frombuffer(data, dtype=np.int16)
-            input_queue.put(audio_data)
+            with audio_data_lock:
+                audio_data_shared = audio_data
     except KeyboardInterrupt:
         pass
     finally:
@@ -48,7 +52,8 @@ def audio_input_thread(input_queue, device_index=0, rate=44100, channels=1):
         input_stream.close()
         p.terminate()
 
-def audio_output_thread(output_queue, device_index=0, rate=44100, channels=1):
+def audio_output_thread(device_index=0, rate=44100, channels=1):
+    global audio_data_shared
     p = pyaudio.PyAudio()
     output_stream = p.open(format=pyaudio.paInt16,
                            channels=channels,
@@ -57,8 +62,23 @@ def audio_output_thread(output_queue, device_index=0, rate=44100, channels=1):
                            output_device_index=device_index)
     try:
         while True:
-            nrz_data_audio = output_queue.get()
-            output_stream.write(nrz_data_audio.tobytes())
+            with audio_data_lock:
+                if audio_data_shared is not None:
+                    audio_data = audio_data_shared.copy()
+                else:
+                    audio_data = None
+
+            if audio_data is not None:
+                # Modulation CVSD
+                mod_data = cvsd_modulate(audio_data)
+                mod_data = np.array(mod_data)
+
+                # Codage NRZ
+                nrz_data = nrz_encode(mod_data)
+
+                # Convertir les données NRZ en format compatible pour la sortie audio
+                nrz_data_audio = np.int16(nrz_data * 32767)  # Scaler les données pour correspondre au format audio
+                output_stream.write(nrz_data_audio.tobytes())
     except KeyboardInterrupt:
         pass
     finally:
@@ -66,37 +86,49 @@ def audio_output_thread(output_queue, device_index=0, rate=44100, channels=1):
         output_stream.close()
         p.terminate()
 
-def serial_output_thread(serial_queue):
-    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
+def serial_output_thread():
+    global audio_data_shared
+    ser = serial.Serial('/dev/ttyUSB4', 9600, timeout=1)
     try:
         while True:
-            nrz_data_audio = serial_queue.get()
-            ser.write(nrz_data_audio.tobytes())
+            with audio_data_lock:
+                if audio_data_shared is not None:
+                    audio_data = audio_data_shared.copy()
+                else:
+                    audio_data = None
+
+            if audio_data is not None:
+                # Modulation CVSD
+                mod_data = cvsd_modulate(audio_data)
+                mod_data = np.array(mod_data)
+
+                # Codage NRZ
+                nrz_data = nrz_encode(mod_data)
+
+                # Convertir les données NRZ en format compatible pour la sortie série
+                nrz_data_audio = np.int16(nrz_data * 32767)  # Scaler les données pour correspondre au format série
+                ser.write(nrz_data_audio.tobytes())
     except KeyboardInterrupt:
         pass
     finally:
         ser.close()
 
-def plot_audio_stream(device_index=0, rate=44100, channels=1):
-    input_queue = Queue()
-    output_queue = Queue()
-    serial_queue = Queue()
-
-    threading.Thread(target=audio_input_thread, args=(input_queue, device_index, rate, channels)).start()
-    threading.Thread(target=audio_output_thread, args=(output_queue, device_index, rate, channels)).start()
-    threading.Thread(target=serial_output_thread, args=(serial_queue,)).start()
+def plot_audio_stream(device_index=0, rate=44100, channels=1, chunk_size=2048):
+    threading.Thread(target=audio_input_thread, args=(device_index, rate, channels, chunk_size)).start()
+    threading.Thread(target=audio_output_thread, args=(device_index, rate, channels)).start()
+    threading.Thread(target=serial_output_thread).start()
 
     print("Affichage et traitement du signal en cours...")
     
     plt.ion()
     fig, axs = plt.subplots(3, 1, sharex=True)
     
-    x = np.arange(0, 2 * 1024, 2)
+    x = np.arange(0, 2 * chunk_size, 2)
     
     # Initial plots for each subplot
     lines = []
     for ax in axs:
-        line, = ax.plot(x, np.random.rand(1024))
+        line, = ax.plot(x, np.random.rand(chunk_size))
         lines.append(line)
     
     axs[0].set_ylim(-32768, 32768)
@@ -109,29 +141,27 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1):
 
     try:
         while True:
-            audio_data = input_queue.get()
-            
-            # Modulation CVSD
-            mod_data = cvsd_modulate(audio_data)
-            mod_data = np.array(mod_data)
-            
-            # Codage NRZ
-            nrz_data = nrz_encode(mod_data)
-            
-            # Convertir les données NRZ en format compatible pour la sortie audio
-            nrz_data_audio = np.int16(nrz_data * 32767)  # Scaler les données pour correspondre au format audio
-            
-            # Mettre les données dans les files d'attente pour la sortie audio et série
-            output_queue.put(nrz_data_audio)
-            serial_queue.put(nrz_data_audio)
-            
-            # Mettre à jour les plots
-            lines[0].set_ydata(audio_data)
-            lines[1].set_ydata(mod_data)
-            lines[2].set_ydata(nrz_data)
-            
-            fig.canvas.draw()
-            fig.canvas.flush_events()
+            with audio_data_lock:
+                if audio_data_shared is not None:
+                    audio_data = audio_data_shared.copy()
+                else:
+                    audio_data = None
+
+            if audio_data is not None:
+                # Modulation CVSD
+                mod_data = cvsd_modulate(audio_data)
+                mod_data = np.array(mod_data)
+
+                # Codage NRZ
+                nrz_data = nrz_encode(mod_data)
+
+                # Mettre à jour les plots
+                lines[0].set_ydata(audio_data)
+                lines[1].set_ydata(mod_data)
+                lines[2].set_ydata(nrz_data)
+                
+                fig.canvas.draw()
+                fig.canvas.flush_events()
     
     except KeyboardInterrupt:
         print("Affichage et traitement terminés.")
@@ -141,4 +171,4 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1):
         plt.show()
 
 # Utilisation du script
-plot_audio_stream(device_index=0, rate=44100, channels=1)
+plot_audio_stream(device_index=0, rate=44100, channels=1, chunk_size=2048)
