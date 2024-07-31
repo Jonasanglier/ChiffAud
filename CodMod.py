@@ -88,7 +88,7 @@ def audio_output_thread(device_index=0, rate=44100, channels=1):
 
 def serial_output_thread():
     global audio_data_shared
-    ser = serial.Serial('/dev/ttyUSB4', 9600, timeout=1)
+    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
     try:
         while True:
             with audio_data_lock:
