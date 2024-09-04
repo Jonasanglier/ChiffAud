@@ -1,8 +1,9 @@
 import pyaudio
 import numpy as np
 import matplotlib.pyplot as plt
-import serial
 import threading
+import gpiod
+import time
 
 # Variables partagées et verrous
 audio_data_shared = None
@@ -52,14 +53,12 @@ def audio_input_thread(device_index=0, rate=44100, channels=1, chunk_size=2048):
         input_stream.close()
         p.terminate()
 
-def audio_output_thread(device_index=0, rate=44100, channels=1):
+def gpio_output_thread():
     global audio_data_shared
-    p = pyaudio.PyAudio()
-    output_stream = p.open(format=pyaudio.paInt16,
-                           channels=channels,
-                           rate=rate,
-                           output=True,
-                           output_device_index=device_index)
+    chip = gpiod.Chip('4')  # Use '/dev/gpiochip0' for the first GPIO controller
+    line = chip.get_line(17)  # GPIO17
+    line.request(consumer='nrz_signal', type=gpiod.LINE_REQ_DIR_OUT)
+
     try:
         while True:
             with audio_data_lock:
@@ -76,47 +75,18 @@ def audio_output_thread(device_index=0, rate=44100, channels=1):
                 # Codage NRZ
                 nrz_data = nrz_encode(mod_data)
 
-                # Convertir les données NRZ en format compatible pour la sortie audio
-                nrz_data_audio = np.int16(nrz_data * 32767)  # Scaler les données pour correspondre au format audio
-                output_stream.write(nrz_data_audio.tobytes())
+                # Send NRZ data to GPIO
+                for bit in nrz_data:
+                    line.set_value(1 if bit > 0 else 0)
+                    time.sleep(1 / 44100)  # Adjust timing based on your requirements
     except KeyboardInterrupt:
         pass
     finally:
-        output_stream.stop_stream()
-        output_stream.close()
-        p.terminate()
-
-def serial_output_thread():
-    global audio_data_shared
-    ser = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
-    try:
-        while True:
-            with audio_data_lock:
-                if audio_data_shared is not None:
-                    audio_data = audio_data_shared.copy()
-                else:
-                    audio_data = None
-
-            if audio_data is not None:
-                # Modulation CVSD
-                mod_data = cvsd_modulate(audio_data)
-                mod_data = np.array(mod_data)
-
-                # Codage NRZ
-                nrz_data = nrz_encode(mod_data)
-
-                # Convertir les données NRZ en format compatible pour la sortie série
-                nrz_data_audio = np.int16(nrz_data * 32767)  # Scaler les données pour correspondre au format série
-                ser.write(nrz_data_audio.tobytes())
-    except KeyboardInterrupt:
-        pass
-    finally:
-        ser.close()
+        line.release()
 
 def plot_audio_stream(device_index=0, rate=44100, channels=1, chunk_size=2048):
     threading.Thread(target=audio_input_thread, args=(device_index, rate, channels, chunk_size)).start()
-    threading.Thread(target=audio_output_thread, args=(device_index, rate, channels)).start()
-    threading.Thread(target=serial_output_thread).start()
+    threading.Thread(target=gpio_output_thread).start()
 
     print("Affichage et traitement du signal en cours...")
     
