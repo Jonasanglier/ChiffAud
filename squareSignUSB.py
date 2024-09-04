@@ -1,55 +1,40 @@
-import numpy as np
-import serial
+import gpiod
 import time
 
-def generate_square_wave(frequency, sample_rate, duration):
-    """
-    Génère un signal carré.
-    
-    :param frequency: Fréquence du signal carré en Hz
-    :param sample_rate: Taux d'échantillonnage en échantillons par seconde
-    :param duration: Durée du signal en secondes
-    :return: Tableau de données contenant le signal carré
-    """
-    t = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    square_wave = 0.5 * (1 + np.sign(np.sin(2 * np.pi * frequency * t)))
-    return square_wave
+square = 17
+# Configuration du numéro de ligne GPIO (GPIO4 en Broadcom)
+chip = gpiod.Chip('4')  # Utilisez '/dev/gpiochip0' pour le premier contrôleur GPIO
+line = chip.get_line(square)  # GPIO4 en Broadcom BCM correspond à la broche physique 7
 
-def send_square_wave_via_serial(port, baudrate, frequency, sample_rate, duration):
-    """
-    Envoie un signal carré via le port série.
-    
-    :param port: Port série (par exemple, '/dev/ttyUSB0' ou 'COM3')
-    :param baudrate: Débit en bauds
-    :param frequency: Fréquence du signal carré en Hz
-    :param sample_rate: Taux d'échantillonnage en échantillons par seconde
-    :param duration: Durée du signal en secondes
-    """
-    # Générer le signal carré
-    square_wave = generate_square_wave(frequency, sample_rate, duration)
-    
-    # Convertir le signal en données série
-    square_wave_serial = np.int16(square_wave * 32767)  # Scaler pour correspondre au format série
-    square_wave_bytes = square_wave_serial.tobytes()
-    
-    # Configurer le port série
-    ser = serial.Serial(port, baudrate, timeout=1)
-    
-    try:
-        while True:
-            ser.write(square_wave_bytes)
-            time.sleep(duration)  # Attendre la durée du signal avant d'envoyer à nouveau
-    except KeyboardInterrupt:
-        print("Transmission terminée.")
-    finally:
-        ser.close()
+# Configuration de la ligne GPIO comme sortie
+line.request(consumer='square_signal', type=gpiod.LINE_REQ_DIR_OUT)
 
-# Paramètres
-port = '/dev/ttyUSB0'  # Remplace par le port série correct
-baudrate = 9600
-frequency = 1  # Fréquence du signal carré en Hz
-sample_rate = 44100  # Taux d'échantillonnage en échantillons par seconde
-duration = 1  # Durée du signal en secondes
+# Fréquence du signal carré en Hz
+frequency = 100000  # Changez cette valeur selon vos besoins
 
-# Envoyer le signal carré via le port série
-send_square_wave_via_serial(port, baudrate, frequency, sample_rate, duration)
+# Durée du cycle de travail (duty cycle), de 0 à 1 (50% = 0.5)
+duty_cycle = 0.5
+
+# Période du signal carré
+period = 1.0 / frequency
+
+try:
+    while True:
+        # Met la broche à l'état haut
+        line.set_value(1)
+        print("Signal HIGH")
+        time.sleep(1)
+        #time.sleep(period * duty_cycle)
+        
+        # Met la broche à l'état bas
+        line.set_value(0)
+        print("Signal LOW")
+        time.sleep(1)
+
+except KeyboardInterrupt:
+    print("Programme interrompu")
+    
+finally:
+    # Libération de la ligne GPIO
+    line.release()
+
