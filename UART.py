@@ -15,4 +15,3 @@ if ser.is_open:
 # Envoie des données
 while True:
     ser.write(b"Bonjour de Raspberry Pi 1\n")  # Envoie un message en bytes
-    
