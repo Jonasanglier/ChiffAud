@@ -1,97 +1,88 @@
 import pyaudio
 import numpy as np
-import matplotlib.pyplot as plt
+import gpiod
+import threading
+import time
+
+# Variables partagées et verrous
+decoded_audio_shared = None
+decoded_audio_lock = threading.Lock()
 
 def cvsd_demodulate(encoded, delta_init=0.2, mu=1.5):
+    decoded = []
     delta = delta_init
     estimate = 0
-    decoded = []
-    for i, bit in enumerate(encoded):
+
+    for bit in encoded:
         if bit == 1:
             estimate += delta
         else:
             estimate -= delta
 
+        # Clamping the estimate to avoid overflow
+        estimate = np.clip(estimate, -32768, 32767)
         decoded.append(estimate)
 
-        if i >= 1 and encoded[i] == encoded[i-1]:
+        if len(decoded) > 1 and encoded[len(decoded)-1] == encoded[len(decoded)-2]:
             delta *= mu
         else:
             delta /= mu
 
-    return np.array(decoded)
+    return np.array(decoded, dtype=np.int16)
 
-def nrz_decode(data):
-    """Décodage NRZ simple."""
-    return np.where(data > 0, 1, 0)
-
-
-def plot_audio_stream(device_index=0, rate=44100, channels=1):
-    p = pyaudio.PyAudio()
-    
-    # Configuration du flux audio
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=channels,
-                    rate=rate,
-                    input=True,
-                    input_device_index=device_index,
-                    frames_per_buffer=1024)
-    
-    print("Affichage du signal en cours...")
-    
-    plt.ion()
-    fig, axs = plt.subplots(5, 1, sharex=True)
-    
-    x = np.arange(0, 2 * 1024, 2)
-    
-    # Initial plots for each subplot
-    lines = []
-    for ax in axs:
-        line, = ax.plot(x, np.random.rand(1024))
-        lines.append(line)
-    
-    axs[0].set_ylim(-32768, 32768)
-    axs[1].set_ylim(-0.2, 1.2)
-    axs[2].set_ylim(-1.2, 1.2)
-    axs[3].set_ylim(-0.2, 1.2)
-    axs[4].set_ylim(-32768, 32768)
-    
-    axs[0].set_title('Signal Audio Original')
-    axs[1].set_title('Signal Modulé CVSD')
-    axs[2].set_title('Signal Codé en NRZ')
-    axs[3].set_title('Signal Décodé en NRZ')
-    axs[4].set_title('Signal Démodulé CVSD')
+def gpio_input_thread():
+    global decoded_audio_shared
+    chip = gpiod.Chip('4')  # Use '/dev/gpiochip0' for the first GPIO controller
+    line = chip.get_line(22)  # GPIO22
+    line.request(consumer='cvsd_signal', type=gpiod.LINE_REQ_DIR_IN)
 
     try:
         while True:
-            data = stream.read(1024, exception_on_overflow=False)
-            
-            # Convertir les données audio en un tableau numpy
-            audio_data = np.frombuffer(data, dtype=np.int16) 
+            encoded_signal = []
+            for _ in range(2048):  # Read chunks of 2048 bits
+                bit = line.get_value()
+                encoded_signal.append(bit)
+                time.sleep(1 / 44100)  # Adjust timing based on your requirements
 
-            
-            # Décodage NRZ
-            nrz_decoded_data = nrz_decode(audio_data)
-            
-            # Démodulation CVSD
-            demod_data = cvsd_demodulate(nrz_decoded_data)
-            
-            # Mettre à jour les plots
+            # CVSD Demodulation
+            decoded_audio = cvsd_demodulate(encoded_signal)
 
-            lines[3].set_ydata(nrz_decoded_data)
-            lines[4].set_ydata(demod_data)
-            
-            fig.canvas.draw()
-            fig.canvas.flush_events()
-    
+            with decoded_audio_lock:
+                decoded_audio_shared = decoded_audio
+
     except KeyboardInterrupt:
-        print("Affichage terminé.")
-    
+        pass
     finally:
-        # Arrêter le flux et fermer
-        stream.stop_stream()
-        stream.close()
+        line.release()
+
+def audio_output_thread(rate=44100, channels=1):
+    global decoded_audio_shared
+    p = pyaudio.PyAudio()
+    output_stream = p.open(format=pyaudio.paInt16,
+                           channels=channels,
+                           rate=rate,
+                           output=True)
+
+    try:
+        while True:
+            with decoded_audio_lock:
+                if decoded_audio_shared is not None:
+                    decoded_audio = decoded_audio_shared.copy()
+                else:
+                    decoded_audio = None
+
+            if decoded_audio is not None:
+                output_stream.write(decoded_audio.tobytes())
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        output_stream.stop_stream()
+        output_stream.close()
         p.terminate()
 
 # Utilisation du script
-plot_audio_stream(device_index=0, rate=44100, channels=1)
+threading.Thread(target=gpio_input_thread).start()
+threading.Thread(target=audio_output_thread).start()
+
+print("Réception et lecture du signal en cours...")

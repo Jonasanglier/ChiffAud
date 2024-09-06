@@ -19,7 +19,7 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1):
     fig, ax = plt.subplots()
     x = np.arange(0, 2 * 1024, 2)
     line, = ax.plot(x, np.random.rand(1024))
-    ax.set_ylim(-32768, 32768)
+    ax.set_ylim(-40768, 40768)
     ax.set_xlim(0, 1024)
 
     try:

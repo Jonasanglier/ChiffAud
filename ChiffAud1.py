@@ -11,7 +11,7 @@ import sys
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
 import numpy as np
-import sounddevice as sd
+import sounddevice as sd #type: ignore
 
 def int_or_str(text):
     """Convertion d'une chaine en entier sinon renvoie la chaine tel qu'elle est."""
