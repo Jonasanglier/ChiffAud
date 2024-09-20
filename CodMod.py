@@ -27,10 +27,6 @@ def cvsd_modulate(signal, delta_init=0.2, mu=1.5):
             delta /= mu
     return encoded
 
-def nrz_encode(data):
-    """Encodage NRZ simple."""
-    return np.where(data > 0.5, 1, -1)
-
 def audio_input_thread(device_index=0, rate=44100, channels=1, chunk_size=2048):
     global audio_data_shared
     p = pyaudio.PyAudio()
@@ -57,7 +53,7 @@ def gpio_output_thread():
     global audio_data_shared
     chip = gpiod.Chip('4')  # Use '/dev/gpiochip0' for the first GPIO controller
     line = chip.get_line(17)  # GPIO17
-    line.request(consumer='nrz_signal', type=gpiod.LINE_REQ_DIR_OUT)
+    line.request(consumer='cvsd_signal', type=gpiod.LINE_REQ_DIR_OUT)
 
     try:
         while True:
@@ -72,12 +68,9 @@ def gpio_output_thread():
                 mod_data = cvsd_modulate(audio_data)
                 mod_data = np.array(mod_data)
 
-                # Codage NRZ
-                nrz_data = nrz_encode(mod_data)
-
-                # Send NRZ data to GPIO
-                for bit in nrz_data:
-                    line.set_value(1 if bit > 0 else 0)
+                # Send CVSD data to GPIO
+                for bit in mod_data:
+                    line.set_value(bit)
                     time.sleep(1 / 44100)  # Adjust timing based on your requirements
     except KeyboardInterrupt:
         pass
@@ -91,7 +84,7 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1, chunk_size=2048):
     print("Affichage et traitement du signal en cours...")
     
     plt.ion()
-    fig, axs = plt.subplots(3, 1, sharex=True)
+    fig, axs = plt.subplots(2, 1, sharex=True)
     
     x = np.arange(0, 2 * chunk_size, 2)
     
@@ -103,11 +96,9 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1, chunk_size=2048):
     
     axs[0].set_ylim(-32768, 32768)
     axs[1].set_ylim(-0.2, 1.2)
-    axs[2].set_ylim(-1.2, 1.2)
     
     axs[0].set_title('Signal Audio Original')
     axs[1].set_title('Signal Modulé CVSD')
-    axs[2].set_title('Signal Codé en NRZ')
 
     try:
         while True:
@@ -122,13 +113,9 @@ def plot_audio_stream(device_index=0, rate=44100, channels=1, chunk_size=2048):
                 mod_data = cvsd_modulate(audio_data)
                 mod_data = np.array(mod_data)
 
-                # Codage NRZ
-                nrz_data = nrz_encode(mod_data)
-
                 # Mettre à jour les plots
                 lines[0].set_ydata(audio_data)
                 lines[1].set_ydata(mod_data)
-                lines[2].set_ydata(nrz_data)
                 
                 fig.canvas.draw()
                 fig.canvas.flush_events()
